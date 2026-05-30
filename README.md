@@ -1,47 +1,42 @@
 # CreatorInsight AI: RAG Chatbot for Social Media Comparison
 
-CreatorInsight AI is a full-stack RAG (Retrieval-Augmented Generation) Chatbot designed to compare two social media videos side-by-side (YouTube and Instagram Reels). It extracts transcripts and metadata, computes engagement rates, and provides a dynamic chat interface to analyze hooks, strategy, and performance.
+**Live Demo:** [https://creator-insight-ai.vercel.app/](https://creator-insight-ai.vercel.app/)
 
-## Architecture & Tech Stack
+CreatorInsight AI is a full-stack Retrieval-Augmented Generation (RAG) platform built to contextually analyze and compare short-form social media video content (YouTube Shorts & Instagram Reels). It handles automated extraction of metadata and transcripts, computes standardized engagement metrics, and provides a real-time SSE (Server-Sent Events) streaming chat interface to interrogate video hooks, pacing, and retention strategies.
 
-This project is built with an "engineer-first" mindset, balancing performance, ease of use, and local testability.
+## System Architecture
 
-*   **Frontend**: Next.js 15 (React), Tailwind CSS, Framer Motion, Lucide Icons.
-    *   *Why?* Next.js provides the best Developer Experience for React. Tailwind allows for rapid "vibe-coding" to create a sleek, dynamic interface.
-*   **Backend**: FastAPI (Python).
-    *   *Why?* FastAPI is the industry standard for AI/ML backends. It handles asynchronous streaming natively and integrates perfectly with LangChain.
-*   **Orchestration**: LangChain.
-    *   *Why?* LangChain's `create_retrieval_chain` and `RunnableWithMessageHistory` provide a robust framework for managing conversational memory and formatting RAG prompts.
-*   **Embeddings & LLM**: Google Gemini (`gemini-1.5-flash` & `text-embedding-004`).
-    *   *Why?* Gemini offers a massive context window and rapid inference speed, which is critical for real-time streaming chat experiences.
-*   **Vector DB**: ChromaDB.
-    *   *Why?* For this demonstration, ChromaDB runs entirely locally without requiring external cloud accounts or complex Docker setups. This makes evaluating the repository frictionless.
-*   **Extraction**: `yt-dlp`, `youtube-transcript-api`, and `faster-whisper`.
-    *   *Why?* YouTube provides transcripts directly, making `youtube-transcript-api` the fastest option. However, Instagram Reels rarely have accessible transcripts. `yt-dlp` reliably fetches metadata and audio for both. For Instagram (or missing YT transcripts), `faster-whisper` runs a local transcription model on the CPU to ensure we always have text to embed.
+The project is built with a focus on decoupling the frontend presentation layer from the heavy synchronous ML processing pipeline on the backend.
 
-## Core Features
-- **Dynamic Input**: Paste any YouTube or IG Reel URL.
-- **Engagement Calculation**: Automatically computes `((likes + comments) / views) * 100`.
-- **RAG + Citations**: The chatbot grounds its answers in the transcripts and explicitly cites its sources (e.g., `[Video A, Chunk 3]`).
-- **Real-time Streaming**: SSE streaming ensures a fluid chat experience.
-- **Vibe-coded UI**: Glassmorphic elements, smooth gradients, and micro-animations.
+*   **Frontend (Presentation Layer)**: Built with Next.js 15 (React), Tailwind CSS, and Framer Motion. 
+    *   *Rationale:* Next.js App Router provides a highly optimized edge-ready architecture. The UI is designed to be highly responsive, handling SSE streams natively without blocking the main thread, resulting in a perceived zero-latency chat experience.
+*   **Backend (API & AI Orchestration)**: FastAPI (Python 3.12).
+    *   *Rationale:* FastAPI's ASGI foundation is crucial for handling the long-lived, I/O bound requests inherent in LLM generation and streaming. It serves as the primary orchestration layer, integrating `LangChain` to construct the RAG chain and manage conversational memory (`RunnableWithMessageHistory`).
+*   **Vector Search & Embeddings**: ChromaDB & Google Gemini (`gemini-embedding-2` & `gemini-1.5-flash`).
+    *   *Rationale:* Gemini 1.5 Flash was selected for its exceptional inference speed and massive context window, making it ideal for processing multi-document RAG contexts. ChromaDB is used as an embedded vector store to ensure the application remains highly portable for local development and rapid deployment.
+*   **Ingestion Pipeline**: `yt-dlp`, `youtube-transcript-api`, and `faster-whisper`.
+    *   *Rationale:* YouTube transcripts are fetched directly via API for near-instant retrieval. However, Instagram Reels lack native transcript access. To solve this, the pipeline falls back to `yt-dlp` to extract the raw audio track, which is then passed through `faster-whisper`—a highly optimized CTranslate2 implementation of OpenAI's Whisper model—allowing for rapid, local transcription on CPU without relying on expensive third-party APIs.
 
-## Trade-offs and Design Decisions
+## Engineering Trade-offs & Scalability Roadmap
 
-1.  **Vector DB (Chroma vs. Pinecone/Qdrant)**:
-    I chose ChromaDB specifically because it requires zero configuration for the reviewer. If scaling this to 10,000+ creators daily, I would migrate to **Qdrant** or **Pinecone** for distributed, cloud-native vector search. Local SQLite-based Chroma will bottleneck under high concurrent write loads.
-2.  **Chunk Size**:
-    Transcripts are chunked at `1000` characters with a `200` character overlap.
-    *Why?* Social media scripts are fast-paced. A 1000-character chunk roughly equates to 1-2 minutes of spoken text, capturing enough context for "hooks" or "transitions" without diluting the semantic meaning of the embedding. Overlap prevents cutting sentences in half.
-3.  **Instagram Extraction**:
-    Relying on unofficial APIs or scraping (like `instaloader`) often results in IP bans. I used `yt-dlp` to download the audio track and `faster-whisper` for local transcription. This is incredibly resilient but introduces a 5-10 second overhead during processing. At scale, this transcription pipeline would be offloaded to an asynchronous Celery/Redis worker queue rather than blocking the HTTP request.
+While the current architecture is optimized for rapid deployment and high-quality inference, scaling this to process 1,000+ creators daily requires addressing specific bottlenecks:
+
+1.  **Synchronous Ingestion Blocking:**
+    *   *Current:* The HTTP request blocks while downloading audio and running `faster-whisper`.
+    *   *At Scale:* Introduce an asynchronous task queue (e.g., Celery with Redis or RabbitMQ). The API would return a `202 Accepted` with a job ID, and the frontend would poll or use WebSockets for completion status.
+2.  **Vector Database Portability:**
+    *   *Current:* ChromaDB runs locally (SQLite-backed).
+    *   *At Scale:* Migrate the vector store to a managed, distributed solution like Pinecone or Qdrant to handle concurrent high-volume read/writes and ensure persistence across container restarts.
+3.  **Transcription Compute Costs:**
+    *   *Current:* `faster-whisper` runs locally.
+    *   *At Scale:* To process thousands of videos rapidly, maintaining GPU-backed instances for Whisper is expensive. It would be more cost-efficient to offload the audio to a specialized provider like Deepgram or AssemblyAI, which offer high-concurrency transcription at fractions of a cent per minute.
 
 ## Setup Instructions
 
 ### Prerequisites
 - Node.js (v18+)
 - Python (3.9+)
-- FFmpeg (Required for `yt-dlp` to extract audio for Whisper)
+- FFmpeg (Required for audio extraction)
   - Mac: `brew install ffmpeg`
 
 ### 1. Environment Configuration
@@ -66,4 +61,4 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000` to start comparing creators.
+Open `http://localhost:3000` to start the application locally.
