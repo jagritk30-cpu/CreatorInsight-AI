@@ -11,4 +11,5 @@ chromadb
 python-dotenv
 langchain-text-splitters
 langchain-classic
+langchain-community
 google-genai
