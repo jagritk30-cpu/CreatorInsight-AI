@@ -61,4 +61,4 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000` to start the application locally.
+Open `creator-insight-ai.vercel.app` to start the application locally.
