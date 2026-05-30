@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+pydantic
+yt-dlp
+youtube-transcript-api
+faster-whisper
+langchain
+langchain-google-genai
+langchain-chroma
+chromadb
+python-dotenv
+langchain-text-splitters
+langchain-classic
+google-genai
